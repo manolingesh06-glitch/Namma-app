@@ -1,0 +1,26 @@
+{
+  "name": "cricket-auction-backend",
+  "version": "0.1.0",
+  "description": "From-scratch, backend-authoritative cricket auction engine (Phase 1: auth + core bidding engine)",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test tests/*.test.js",
+    "load-test": "node scripts/load-test.js"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.7.5"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "socket.io": "^4.7.5",
+    "uuid": "^9.0.1",
+    "xlsx": "^0.18.5"
+  }
+}
