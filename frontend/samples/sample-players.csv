@@ -1,0 +1,6 @@
+name,role,country,category,isOverseas,basePrice
+Virat Sharma,Batter,India,A,false,2000000
+Jos Carter,All-rounder,England,B,true,1500000
+Rashid Aziz,Bowler,Afghanistan,C,true,1000000
+Rohit Verma,Batter,India,A,false,2000000
+Trent Wilson,Bowler,New Zealand,B,true,1500000
