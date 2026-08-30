@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Team Owner Dashboard — Cricket Auction</title>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script type="module" src="soundEngine.js"></script>
+<style>
+  :root {
+    --bg: #0a0e14; --surface: #131922; --surface-2: #1a2230; --border: #263041;
+    --text: #eef2f7; --text-dim: #8b96a8; --accent: #22c58b; --accent-dim: #17976a;
+    --danger: #ef4b52; --warn: #f0a63e; --info: #4c9eff; --purple: #a385f0; --radius: 14px;
+    --shadow: 0 8px 24px rgba(0,0,0,0.35);
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; background:
+    radial-gradient(circle at top, #101722 0%, var(--bg) 55%); color:var(--text); margin:0; padding:0 0 40px; line-height:1.45; }
+  input, select, button { padding:12px; margin:4px 0; border-radius:10px; border:1px solid var(--border);
+    background:var(--surface-2); color:var(--text); font-size:1rem; }
+  input:focus, select:focus { outline:2px solid var(--accent-dim); outline-offset:1px; }
+  button { cursor:pointer; background:var(--accent); border:none; font-weight:700; color:#04241a;
+    transition:transform .08s ease, filter .15s ease; }
+  button:hover { filter:brightness(1.08); }
+  button:active { transform:scale(0.97); }
+  button.custom { background:var(--purple); color:#1c1330; }
+  button.secondary { background:var(--surface-2); color:var(--text); border:1px solid var(--border); }
+
+  .topbar { position:sticky; top:0; z-index:20; display:flex; align-items:center; justify-content:space-between;
+    gap:12px; padding:14px 20px; background:rgba(10,14,20,0.85); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .topbar h1 { font-size:1.1rem; margin:0; font-weight:700; }
+  .topbar .actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .voiceBar { display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border);
+    border-radius:999px; padding:4px 6px 4px 14px; font-size:0.85rem; }
+  .voiceBar .dot { width:8px; height:8px; border-radius:50%; background:var(--text-dim); }
+  .voiceBar.live .dot { background:var(--accent); box-shadow:0 0 0 3px rgba(34,197,139,0.25); }
+  .voiceBar button { padding:6px 12px; margin:0; border-radius:999px; font-size:0.8rem; }
+
+  .shell { max-width:640px; margin:0 auto; padding:20px; }
+  .panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px;
+    margin-bottom:18px; box-shadow:var(--shadow); }
+  h2, h3 { margin-top:0; }
+  h3 { font-size:0.85rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.04em; }
+  #currentBid { font-size:3rem; font-weight:800; color:var(--accent); text-align:center; }
+  #timer { font-size:2.2rem; font-weight:700; color:var(--warn); text-align:center; }
+  #playerName { font-size:1.5rem; font-weight:700; text-align:center; }
+  .purseBar { background:var(--surface-2); border-radius:6px; overflow:hidden; height:12px; margin:8px 0; }
+  .purseFill { background:var(--accent); height:100%; transition:width .25s ease; }
+  .bidGrid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:14px; }
+  .bidGrid button { padding:16px; font-size:1.05rem; }
+  #status { text-align:center; font-weight:700; padding:8px; border-radius:8px; letter-spacing:0.04em; }
+  .status-LIVE { background:rgba(76,158,255,0.15); color:var(--info); }
+  .status-PAUSED { background:rgba(240,166,62,0.15); color:var(--warn); }
+  #outbidBanner { display:none; background:rgba(239,75,82,0.18); color:var(--danger); text-align:center;
+    padding:10px; border-radius:10px; margin-bottom:12px; font-weight:700; }
+  #typingLine { font-size:0.8rem; color:var(--text-dim); font-style:italic; min-height:1.2em; }
+  #notifBadge { background:var(--danger); border-radius:10px; padding:1px 7px; font-size:0.72rem; margin-left:6px; color:#fff; }
+  #notifList { max-height:160px; overflow-y:auto; font-size:0.85rem; }
+  #notifList div { padding:6px 0; border-bottom:1px solid var(--border); }
+
+  @media (max-width: 480px) {
+    .shell { padding:14px; }
+    .topbar { padding:10px 12px; }
+    #currentBid { font-size:2.4rem; }
+    #timer { font-size:1.8rem; }
+    .bidGrid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>🏏 Team Owner</h1>
+  <div class="actions">
+    <div class="voiceBar" id="voiceBar">
+      <span class="dot" id="voiceDot"></span>
+      <span id="voiceStatus">Voice: off</span>
+      <button class="secondary" id="voiceJoinBtn" onclick="toggleVoice()">🎙️ Join</button>
+      <button class="secondary" id="voiceMuteBtn" onclick="toggleVoiceMute()" style="display:none">Mute</button>
+    </div>
+    <button onclick="logout()" class="secondary" style="font-size:0.8rem">Logout</button>
+  </div>
+</div>
+
+<div class="shell">
+
+<div class="panel" id="loginPanel">
+  <h2>Login</h2>
+  <input id="loginUsername" placeholder="Username" /><br/>
+  <input id="loginPassword" type="password" placeholder="Password" /><br/>
+  <input id="auctionIdInput" placeholder="Auction ID (from host)" /><br/>
+  <button onclick="login()">Login & Join Auction</button>
+  <div id="loginError" style="color:var(--danger)"></div>
+</div>
+
+<div id="dashboard" style="display:none">
+  <div id="outbidBanner">You've been outbid!</div>
+  <div class="panel">
+    <div id="status" class="status-LIVE">LIVE</div>
+    <div id="playerName">Waiting for a player...</div>
+    <div id="currentBid">—</div>
+    <div id="timer">--:--</div>
+    <div id="highestBidderLine" style="text-align:center;color:#8b949e"></div>
+
+    <div class="bidGrid">
+      <button onclick="placeBid('increment')" id="bidBtn">Bid +Increment</button>
+      <button onclick="promptCustomBid()" class="custom">Custom Bid</button>
+    </div>
+    <div id="bidDisabledReason" style="text-align:center;color:#f0883e;font-size:0.85rem;margin-top:6px"></div>
+  </div>
+
+  <div class="panel">
+    <h3 id="teamNameHeader">Your Team</h3>
+    <div>Purse: <span id="purseRemaining"></span> / <span id="purseTotal"></span></div>
+    <div class="purseBar"><div class="purseFill" id="purseFillBar" style="width:100%"></div></div>
+    <div>Squad: <span id="squadCount"></span> / <span id="squadLimit"></span></div>
+    <div id="squadWarning" style="color:#f85149;font-weight:600;font-size:0.85rem"></div>
+  </div>
+
+  <div class="panel">
+    <h3>Auto-Bid (Max Bid)</h3>
+    <div id="autoBidStatus" style="color:#8b949e;font-size:0.9rem;margin-bottom:6px">Not active for this player.</div>
+    <input id="autoBidMax" type="number" placeholder="Your maximum bid" />
+    <button onclick="enableAutoBid()">Enable Auto-Bid</button>
+    <button onclick="disableAutoBid()" class="secondary">Cancel</button>
+  </div>
+
+  <div class="panel">
+    <h2>Notifications <span id="notifBadge" style="display:none">0</span></h2>
+    <button onclick="loadNotifications()" class="secondary">Refresh</button>
+    <button onclick="markAllNotificationsRead()" class="secondary">Mark all read</button>
+    <div id="notifList"></div>
+  </div>
+
+  <div class="panel">
+    <h3>Recent Bids (this player)</h3>
+    <div id="recentBids" style="font-size:0.9rem;color:#8b949e"></div>
+  </div>
+
+  <div class="panel">
+    <h3>Chat</h3>
+    <div id="chatMessages" style="max-height:180px;overflow-y:auto;border:1px solid #30363d;border-radius:6px;padding:8px;margin-bottom:8px;font-size:0.9rem"></div>
+    <div id="typingLine"></div>
+    <input id="chatInput" placeholder="Type a message..." style="width:70%" oninput="onChatTyping()" />
+    <button onclick="sendChat()" class="secondary">Send</button>
+  </div>
+
+  <div class="panel">
+    <h3>My Sound Settings</h3>
+    <label><input type="checkbox" id="localMute" /> Mute sounds on this device</label><br/>
+    <label>My volume <input type="range" id="localVolume" min="0" max="1" step="0.05" value="1" /></label>
+  </div>
+</div>
+
+</div><!-- /.shell -->
+
+<script type="module">
+  import { VoiceChat } from "./voiceEngine.js";
+  window.__voiceCtor = VoiceChat; // handed to the classic <script> block below, which owns `socket`
+</script>
+<script>
+const API = `${window.location.origin}/api`; // works locally AND once deployed — no hardcoded host
+let token = null, socket = null, auctionId = null, myTeamId = null, currentPlayerId = null, minIncrement = 0;
+let voiceChat = null;
+function toggleVoice() {
+  if (!auctionId) return alert("No auction joined yet.");
+  if (!voiceChat) voiceChat = new window.__voiceCtor(socket);
+  voiceChat.onChange = ({ active, muted, count }) => {
+    document.getElementById("voiceBar").classList.toggle("live", active);
+    document.getElementById("voiceJoinBtn").innerText = active ? "Leave call" : "🎙️ Join";
+    document.getElementById("voiceStatus").innerText = active ? `Voice: live · ${count} other${count === 1 ? "" : "s"}` : "Voice: off";
+    document.getElementById("voiceMuteBtn").style.display = active ? "inline-block" : "none";
+    document.getElementById("voiceMuteBtn").innerText = muted ? "Unmute" : "Mute";
+  };
+  if (voiceChat.active) voiceChat.leave();
+  else voiceChat.join(auctionId).catch((e) => alert("Couldn't access microphone: " + e.message));
+}
+function toggleVoiceMute() { voiceChat?.toggleMute(); }
+let inFlight = false; // prevents a second click from firing a second request while one is pending
+let auctionSoundSettings = null;
+
+async function login() {
+  window.AuctionSounds?.unlock(); // user gesture — satisfies browser autoplay policy
+  const username = document.getElementById("loginUsername").value;
+  const password = document.getElementById("loginPassword").value;
+  auctionId = document.getElementById("auctionIdInput").value;
+
+  const res = await fetch(`${API}/login`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({username,password}) });
+  const data = await res.json();
+  if (!res.ok) { document.getElementById("loginError").innerText = data.error; return; }
+  token = data.token;
+  localStorage.setItem("cricketAuction_token", token);
+  localStorage.setItem("cricketAuction_activeAuctionId", auctionId);
+  await afterLogin();
+}
+
+// Shared by manual login AND arriving here already authenticated with a
+// pre-picked auction from index.html — that's what removes the need to
+// ever manually type/paste an Auction ID.
+async function afterLogin() {
+  document.getElementById("loginPanel").style.display = "none";
+  document.getElementById("dashboard").style.display = "block";
+
+  connectSocket();
+  await syncState();
+  loadNotifications();
+  loadSoundSettings();
+  initLocalSoundControls();
+}
+
+function logout() {
+  voiceChat?.leave();
+  localStorage.removeItem("cricketAuction_token");
+  localStorage.removeItem("cricketAuction_activeAuctionId");
+  localStorage.removeItem("cricketAuction_activeAuctionName");
+  localStorage.removeItem("cricketAuction_role");
+  window.location.href = "index.html";
+}
+
+function authHeaders() { return { "Content-Type":"application/json", "Authorization": `Bearer ${token}` }; }
+
+// Auto-login: if index.html already authenticated this person and they
+// picked this specific auction (role = TEAM_OWNER routes here), skip
+// the manual login form and the Auction ID field entirely.
+const savedToken = localStorage.getItem("cricketAuction_token");
+const savedAuctionId = localStorage.getItem("cricketAuction_activeAuctionId");
+if (savedToken && savedAuctionId) {
+  token = savedToken;
+  auctionId = savedAuctionId;
+  afterLogin();
+} else if (savedAuctionId) {
+  // Arrived with a known auction but no valid session — pre-fill the
+  // fallback manual form so at least they don't have to hunt for the ID.
+  document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("auctionIdInput").value = savedAuctionId;
+  });
+}
+
+function connectSocket() {
+  socket = io(window.location.origin, { auth: { token } });
+  socket.emit("auction:join", { auctionId });
+
+  socket.on("connect", () => syncState());
+
+  socket.on("bid:update", (data) => {
+    document.getElementById("currentBid").innerText = `₹${data.currentBid}`;
+    document.getElementById("highestBidderLine").innerText =
+      data.currentBidderTeamId === myTeamId ? "You are the highest bidder" : "Another team is highest";
+    if (data.currentBidderTeamId !== myTeamId) showOutbidBanner();
+    startTimerDisplay(data.timerEndsAt);
+    addRecentBid(data);
+    window.AuctionSounds?.playEvent("bid", auctionSoundSettings);
+    syncState(); // refreshes purse/squad/bid-button state after every bid, including auto-bid steps
+  });
+
+  socket.on("player:live", async () => {
+    await syncState();
+    window.AuctionSounds?.playEvent("newPlayer", auctionSoundSettings);
+  });
+  socket.on("player:sold", () => {
+    document.getElementById("playerName").innerText = "SOLD! Waiting for next player...";
+    syncTeamPurse();
+    window.AuctionSounds?.playEvent("sold", auctionSoundSettings);
+  });
+  socket.on("player:unsold", () => {
+    document.getElementById("playerName").innerText = "Marked unsold. Waiting for next player...";
+    window.AuctionSounds?.playEvent("unsold", auctionSoundSettings);
+  });
+  socket.on("auction:paused", () => {
+    document.getElementById("status").className = "status-PAUSED";
+    document.getElementById("status").innerText = "PAUSED";
+    window.AuctionSounds?.playEvent("pause", auctionSoundSettings);
+  });
+  socket.on("auction:resumed", (data) => {
+    document.getElementById("status").className = "status-LIVE";
+    document.getElementById("status").innerText = "LIVE";
+    startTimerDisplay(data.livePlayerTimerEndsAt);
+    window.AuctionSounds?.playEvent("resume", auctionSoundSettings);
+  });
+  socket.on("chat:message", (msg) => addChatMessage(msg));
+  socket.on("chat:rejected", (data) => alert(data.reason));
+  socket.on("chat:typing:update", (data) => updateTypingLine(data.users));
+  socket.on("notification:new", (n) => {
+    prependNotification(n);
+    bumpNotifBadge();
+    if (n.type === "OUTBID") window.AuctionSounds?.playEvent("outbid", auctionSoundSettings);
+  });
+  socket.on("soundSettings:updated", (settings) => { auctionSoundSettings = settings; });
+  socket.on("auction:emergencyPaused", () => {
+    document.getElementById("status").className = "status-PAUSED";
+    document.getElementById("status").innerText = "PAUSED (EMERGENCY)";
+    window.AuctionSounds?.playEvent("pause", auctionSoundSettings);
+  });
+  socket.on("action:undone", () => syncState()); // purse/squad/player state may have changed — always resync from authoritative source
+}
+
+// ---------------- Notifications ----------------
+let unreadCount = 0;
+async function loadNotifications() {
+  const res = await fetch(`${API}/auctions/${auctionId}/notifications`, { headers: authHeaders() });
+  const list = await res.json();
+  document.getElementById("notifList").innerHTML = list.map(n =>
+    `<div>${n.read ? "" : "🔵 "}<b>${escapeHtml(n.type)}</b>: ${escapeHtml(n.message)}</div>`
+  ).join("");
+  unreadCount = list.filter(n => !n.read).length;
+  updateNotifBadge();
+}
+function prependNotification(n) {
+  const div = document.getElementById("notifList");
+  const line = document.createElement("div");
+  line.innerHTML = `🔵 <b>${escapeHtml(n.type)}</b>: ${escapeHtml(n.message)}`;
+  div.prepend(line);
+}
+function bumpNotifBadge() { unreadCount++; updateNotifBadge(); }
+function updateNotifBadge() {
+  const badge = document.getElementById("notifBadge");
+  if (unreadCount > 0) { badge.style.display = "inline"; badge.innerText = unreadCount; }
+  else badge.style.display = "none";
+}
+async function markAllNotificationsRead() {
+  await fetch(`${API}/auctions/${auctionId}/notifications/read-all`, { method:"POST", headers: authHeaders() });
+  unreadCount = 0; updateNotifBadge(); loadNotifications();
+}
+
+// ---------------- Sound settings (read-only here — Owner configures via host.html) ----------------
+async function loadSoundSettings() {
+  const res = await fetch(`${API}/auctions/${auctionId}/sound-settings`);
+  auctionSoundSettings = await res.json();
+}
+function initLocalSoundControls() {
+  const muteBox = document.getElementById("localMute");
+  const volSlider = document.getElementById("localVolume");
+  muteBox.checked = window.AuctionSounds?.getLocalMute() || false;
+  volSlider.value = window.AuctionSounds?.getLocalVolume() ?? 1;
+  muteBox.onchange = () => window.AuctionSounds?.setLocalMute(muteBox.checked);
+  volSlider.oninput = () => window.AuctionSounds?.setLocalVolume(parseFloat(volSlider.value));
+}
+
+// ---------------- Typing indicator ----------------
+let typingActive = false, typingStopTimer = null;
+function onChatTyping() {
+  if (!typingActive) {
+    typingActive = true;
+    socket.emit("chat:typing:start", { auctionId });
+  }
+  clearTimeout(typingStopTimer);
+  typingStopTimer = setTimeout(() => {
+    typingActive = false;
+    socket.emit("chat:typing:stop", { auctionId });
+  }, 2000);
+}
+function updateTypingLine(users) {
+  const line = document.getElementById("typingLine");
+  if (!users || users.length === 0) { line.innerText = ""; return; }
+  line.innerText = users.length === 1 ? `${users[0]} is typing...` : `${users.join(" and ")} are typing...`;
+}
+
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function addChatMessage(msg) {
+  const div = document.getElementById("chatMessages");
+  const line = document.createElement("div");
+  line.innerHTML = msg.type === "ANNOUNCEMENT"
+    ? `<b style="color:#f0883e">[Announcement]</b> ${escapeHtml(msg.message)}`
+    : `<b>${escapeHtml(msg.senderName || msg.senderUserId)}:</b> ${escapeHtml(msg.message)}`;
+  div.appendChild(line);
+  div.scrollTop = div.scrollHeight;
+}
+
+function sendChat() {
+  const input = document.getElementById("chatInput");
+  if (!input.value.trim()) return;
+  socket.emit("chat:send", { auctionId, type: "GLOBAL", message: input.value.trim() });
+  input.value = "";
+  clearTimeout(typingStopTimer);
+  typingActive = false;
+  socket.emit("chat:typing:stop", { auctionId });
+}
+
+function showOutbidBanner() {
+  const banner = document.getElementById("outbidBanner");
+  banner.style.display = "block";
+  setTimeout(() => banner.style.display = "none", 3000);
+}
+
+function addRecentBid(data) {
+  const div = document.getElementById("recentBids");
+  const line = document.createElement("div");
+  line.innerText = `₹${data.currentBid} — team ${data.currentBidderTeamId}`;
+  div.prepend(line);
+}
+
+let timerInterval = null;
+let timerWarningPlayed = false;
+function startTimerDisplay(endsAtISO) {
+  clearInterval(timerInterval);
+  timerWarningPlayed = false;
+  if (!endsAtISO) { document.getElementById("timer").innerText = "--:--"; return; }
+  const endsAt = new Date(endsAtISO).getTime();
+  timerInterval = setInterval(() => {
+    const remaining = Math.max(0, Math.round((endsAt - Date.now()) / 1000));
+    document.getElementById("timer").innerText = `${remaining}s`;
+    if (remaining <= 5 && remaining > 0 && !timerWarningPlayed) {
+      timerWarningPlayed = true;
+      window.AuctionSounds?.playEvent("timerWarning", auctionSoundSettings);
+    }
+    if (remaining <= 0) clearInterval(timerInterval);
+  }, 200);
+}
+
+async function syncState() {
+  const res = await fetch(`${API}/auctions/${auctionId}/state`, { headers: authHeaders() });
+  if (res.status === 401) { logout(); return; } // token expired/invalid — send back to index.html to re-login
+  const state = await res.json();
+  myTeamId = state.myTeamId;
+
+  const myTeam = state.teams.find(t => t.id === myTeamId);
+  let myTeamData = myTeam;
+  if (myTeam) {
+    document.getElementById("teamNameHeader").innerText = myTeam.name;
+    document.getElementById("purseRemaining").innerText = myTeam.purse - myTeam.spent;
+    document.getElementById("purseTotal").innerText = myTeam.purse;
+    document.getElementById("purseFillBar").style.width = `${((myTeam.purse - myTeam.spent) / myTeam.purse) * 100}%`;
+    document.getElementById("squadCount").innerText = myTeam.squad_count;
+    document.getElementById("squadLimit").innerText = myTeam.squad_limit;
+
+    const slotsLeft = myTeam.squad_limit - myTeam.squad_count;
+    document.getElementById("squadWarning").innerText =
+      slotsLeft <= 2 && slotsLeft > 0 ? `Only ${slotsLeft} squad slot(s) left!` :
+      slotsLeft <= 0 ? "Squad is full — you cannot buy more players." : "";
+  }
+
+  if (state.livePlayer) {
+    currentPlayerId = state.livePlayer.id;
+    minIncrement = state.auction.min_increment;
+    document.getElementById("playerName").innerText = state.livePlayer.name;
+    document.getElementById("currentBid").innerText = `₹${state.livePlayer.current_bid ?? state.livePlayer.base_price}`;
+    startTimerDisplay(state.livePlayer.timer_ends_at);
+    updateBidButtonState(state.livePlayer, state.auction, myTeamData);
+    loadAutoBidStatus();
+  }
+  document.getElementById("status").innerText = state.auction.status;
+  document.getElementById("status").className = state.auction.status === "PAUSED" ? "status-PAUSED" : "status-LIVE";
+}
+
+// ---------------- Automatic Bid Button Disable + reason ----------------
+function updateBidButtonState(livePlayer, auction, myTeam) {
+  const btn = document.getElementById("bidBtn");
+  const reasonEl = document.getElementById("bidDisabledReason");
+  if (!btn) return;
+
+  let reason = null;
+  if (auction.status !== "LIVE") reason = "Auction is not live right now.";
+  else if (livePlayer.status !== "LIVE") reason = "This player is not currently up for bidding.";
+  else if (!myTeam) reason = "You are not assigned to a team in this auction.";
+  else if (livePlayer.current_bidder_team_id === myTeamId) reason = "You already hold the highest bid.";
+  else {
+    const nextBid = (livePlayer.current_bid ?? livePlayer.base_price) + minIncrement;
+    const remainingPurse = myTeam.purse - myTeam.spent;
+    if (nextBid > remainingPurse) reason = "Insufficient purse for the next valid bid.";
+    else if (myTeam.squad_count >= myTeam.squad_limit) reason = "Your squad is full.";
+    else if (livePlayer.is_overseas && myTeam.overseas_count >= myTeam.overseas_limit) reason = "Your overseas player limit is reached.";
+  }
+
+  btn.disabled = !!reason;
+  reasonEl.innerText = reason || "";
+}
+
+// ---------------- Auto-Bid (Max Bid) ----------------
+async function loadAutoBidStatus() {
+  if (!currentPlayerId) return;
+  const res = await fetch(`${API}/auctions/${auctionId}/players/${currentPlayerId}/auto-bid`, { headers: authHeaders() });
+  const data = await res.json();
+  document.getElementById("autoBidStatus").innerText = data.active
+    ? `Active — auto-bidding up to ₹${data.maxAmount} for this player.`
+    : "Not active for this player.";
+}
+
+async function enableAutoBid() {
+  if (!currentPlayerId) return alert("No live player to set an auto-bid for.");
+  const maxAmount = Number(document.getElementById("autoBidMax").value);
+  if (!maxAmount || maxAmount <= 0) return alert("Enter a valid maximum bid amount.");
+  const res = await fetch(`${API}/auctions/${auctionId}/players/${currentPlayerId}/auto-bid`, {
+    method: "POST", headers: authHeaders(), body: JSON.stringify({ maxAmount }),
+  });
+  const data = await res.json();
+  if (!res.ok) return alert(data.error || "Could not enable auto-bid.");
+  loadAutoBidStatus();
+}
+
+async function disableAutoBid() {
+  if (!currentPlayerId) return;
+  await fetch(`${API}/auctions/${auctionId}/players/${currentPlayerId}/auto-bid`, { method: "DELETE", headers: authHeaders() });
+  loadAutoBidStatus();
+}
+
+async function syncTeamPurse() { await syncState(); }
+
+function promptCustomBid() {
+  const amount = Number(prompt("Enter your bid amount:"));
+  if (amount) placeBid("custom", amount);
+}
+
+function placeBid(mode, customAmount) {
+  if (inFlight || !currentPlayerId) return;
+  inFlight = true;
+
+  fetch(`${API}/auctions/${auctionId}/state`, { headers: authHeaders() })
+    .then(r => r.json())
+    .then(state => {
+      const currentBid = state.livePlayer.current_bid ?? state.livePlayer.base_price;
+      const bidAmount = mode === "custom" ? customAmount : currentBid + minIncrement;
+      const requestId = crypto.randomUUID();
+
+      socket.emit("bid:place", { requestId, auctionId, playerId: currentPlayerId, teamId: myTeamId, bidAmount }, (result) => {
+        inFlight = false;
+        if (!result.accepted) alert(result.reason || "Bid rejected.");
+      });
+    })
+    .catch(() => { inFlight = false; });
+}
+</script>
+</body>
+</html>

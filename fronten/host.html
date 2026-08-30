@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Host Dashboard — Cricket Auction</title>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script type="module" src="soundEngine.js"></script>
+<style>
+  :root {
+    --bg: #0a0e14; --surface: #131922; --surface-2: #1a2230; --border: #263041;
+    --text: #eef2f7; --text-dim: #8b96a8; --accent: #22c58b; --accent-dim: #17976a;
+    --danger: #ef4b52; --warn: #f0a63e; --info: #4c9eff; --radius: 14px;
+    --shadow: 0 8px 24px rgba(0,0,0,0.35);
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; background:
+    radial-gradient(circle at top, #101722 0%, var(--bg) 55%); color:var(--text);
+    margin:0; padding:0 0 40px; line-height:1.45; }
+  input, select, button { padding:10px 12px; margin:4px 0; border-radius:10px; border:1px solid var(--border);
+    background:var(--surface-2); color:var(--text); font-size:0.95rem; }
+  input:focus, select:focus { outline:2px solid var(--accent-dim); outline-offset:1px; }
+  button { cursor:pointer; background:var(--accent); border:none; font-weight:600; color:#04241a;
+    transition:transform .08s ease, filter .15s ease; }
+  button:hover { filter:brightness(1.08); }
+  button:active { transform:scale(0.97); }
+  button.danger { background:var(--danger); color:#fff; }
+  button.secondary { background:var(--surface-2); color:var(--text); border:1px solid var(--border); }
+  button:disabled { opacity:0.45; cursor:not-allowed; }
+
+  .topbar { position:sticky; top:0; z-index:20; display:flex; align-items:center; justify-content:space-between;
+    gap:12px; padding:14px 20px; background:rgba(10,14,20,0.85); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .topbar h1 { font-size:1.15rem; margin:0; display:flex; align-items:center; gap:8px; font-weight:700; }
+  .topbar .actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+  .voiceBar { display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border);
+    border-radius:999px; padding:4px 6px 4px 14px; font-size:0.85rem; }
+  .voiceBar .dot { width:8px; height:8px; border-radius:50%; background:var(--text-dim); }
+  .voiceBar.live .dot { background:var(--accent); box-shadow:0 0 0 3px rgba(34,197,139,0.25); }
+  .voiceBar button { padding:6px 12px; margin:0; border-radius:999px; font-size:0.8rem; }
+
+  .shell { max-width:1080px; margin:0 auto; padding:20px; }
+  .quicknav { display:flex; gap:8px; overflow-x:auto; padding:4px 20px 16px; margin:0 -20px 8px; }
+  .quicknav a { flex:0 0 auto; padding:8px 14px; border-radius:999px; background:var(--surface); border:1px solid var(--border);
+    color:var(--text-dim); text-decoration:none; font-size:0.85rem; white-space:nowrap; }
+  .quicknav a:hover { color:var(--text); border-color:var(--accent-dim); }
+
+  .panel { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px;
+    margin-bottom:18px; box-shadow:var(--shadow); scroll-margin-top:120px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  .col { flex:1; min-width:220px; }
+  h1,h2,h3,h4 { margin-top:0; }
+  h2 { font-size:1.05rem; font-weight:700; display:flex; align-items:center; gap:8px; }
+  h3 { font-size:0.95rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.04em; margin-top:22px; }
+  #currentBid { font-size:2.6rem; font-weight:800; color:var(--accent); }
+  #timer { font-size:1.8rem; font-weight:700; color:var(--warn); }
+  .tableWrap { overflow-x:auto; border-radius:10px; border:1px solid var(--border); }
+  table { width:100%; border-collapse:collapse; min-width:480px; }
+  td, th { padding:9px 10px; border-bottom:1px solid var(--border); text-align:left; font-size:0.88rem; }
+  th { color:var(--text-dim); font-weight:600; background:var(--surface-2); }
+  .status-LIVE { color:var(--accent); font-weight:600; } .status-SOLD { color:var(--info); font-weight:600; } .status-UNSOLD { color:var(--danger); font-weight:600; }
+  #log { max-height:160px; overflow-y:auto; font-size:0.85rem; color:var(--text-dim); background:var(--surface-2);
+    border-radius:10px; padding:10px; }
+  #hidden-panels { display:none; }
+  #typingLine { font-size:0.8rem; color:var(--text-dim); font-style:italic; min-height:1.2em; }
+  .soundRow { display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--border); font-size:0.85rem; }
+  .soundRow label { flex:0 0 130px; }
+  #notifBadge { background:var(--danger); border-radius:10px; padding:1px 7px; font-size:0.72rem; margin-left:6px; color:#fff; }
+  #notifList { max-height:200px; overflow-y:auto; font-size:0.85rem; }
+  #notifList div { padding:6px 0; border-bottom:1px solid var(--border); }
+
+  @media (max-width: 720px) {
+    .shell { padding:14px; }
+    .topbar { padding:12px 14px; }
+    .topbar h1 { font-size:1rem; }
+    .panel { padding:16px; border-radius:12px; }
+    input, select, button { width:100%; }
+    .row > input, .row > select, .row > button, .row > label { width:auto; flex:1 1 140px; }
+    table { min-width:420px; }
+    #currentBid { font-size:2.1rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>🏏 Host Dashboard</h1>
+  <div class="actions">
+    <div class="voiceBar" id="voiceBar">
+      <span class="dot" id="voiceDot"></span>
+      <span id="voiceStatus">Voice: off</span>
+      <button class="secondary" id="voiceJoinBtn" onclick="toggleVoice()">🎙️ Join</button>
+      <button class="secondary" id="voiceMuteBtn" onclick="toggleVoiceMute()" style="display:none">Mute</button>
+    </div>
+    <button onclick="logout()" class="secondary" style="font-size:0.8rem">Logout</button>
+  </div>
+</div>
+
+<div class="shell">
+
+<div class="panel" id="loginPanel">
+  <h2>Login</h2>
+  <input id="loginUsername" placeholder="Username" />
+  <input id="loginPassword" type="password" placeholder="Password" />
+  <button onclick="login()">Login</button>
+  <span id="loginError" style="color:var(--danger)"></span>
+</div>
+
+<div id="hidden-panels">
+  <nav class="quicknav">
+    <a href="#notificationsPanel">Notifications</a>
+    <a href="#auctionsPanel">Auctions</a>
+    <a href="#auctionControlPanel">Live</a>
+    <a href="#teamsAnchor">Teams</a>
+    <a href="#playersAnchor">Players</a>
+    <a href="#chatAnchor">Chat</a>
+    <a href="#exportPanel">Export</a>
+    <a href="#analyticsPanel">Analytics</a>
+    <a href="#soundPanel">Sound</a>
+  </nav>
+
+  <div class="panel" id="notificationsPanel">
+    <h2>Notifications <span id="notifBadge" style="display:none">0</span></h2>
+    <button onclick="loadNotifications()" class="secondary">Refresh</button>
+    <button onclick="markAllNotificationsRead()" class="secondary">Mark all read</button>
+    <div id="notifList"></div>
+  </div>
+
+  <div class="panel" id="auctionsPanel">
+    <h2>Auctions</h2>
+    <button onclick="loadAuctions()" class="secondary">Refresh</button>
+    <div id="auctionList"></div>
+    <h3>Create New Auction</h3>
+    <input id="newAuctionName" placeholder="Auction name" />
+    <input id="newBaseBid" type="number" placeholder="Base bid" />
+    <input id="newIncrement" type="number" placeholder="Min increment" />
+    <input id="newTimer" type="number" placeholder="Timer seconds" value="15" />
+    <input id="newAutoExtend" type="number" placeholder="Auto-extend seconds" value="3" />
+    <button onclick="createAuction()">Create</button>
+    <div id="loadedTemplateNote" style="color:#8b949e;font-size:0.85rem"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Templates (Owner)</h2>
+    <div id="templateList"></div>
+    <h3 id="templateFormTitle">New Template</h3>
+    <input id="templateName" placeholder="Template name" />
+    <div class="row">
+      <input id="tplBaseBid" type="number" placeholder="Base bid" />
+      <input id="tplIncrement" type="number" placeholder="Min increment" />
+      <input id="tplTimer" type="number" placeholder="Timer seconds" value="15" />
+      <input id="tplAutoExtend" type="number" placeholder="Auto-extend seconds" value="3" />
+    </div>
+    <h4>Team Defaults</h4>
+    <div class="row">
+      <input id="tplTeamPurse" type="number" placeholder="Default team purse" />
+      <input id="tplSquadLimit" type="number" placeholder="Default squad limit" />
+      <input id="tplOverseasLimit" type="number" placeholder="Default overseas limit" />
+    </div>
+    <h4>Sound Settings</h4>
+    <div class="row">
+      <label><input type="checkbox" id="tplMasterEnabled" checked /> Master sound ON</label>
+      <label>Master volume <input type="range" id="tplMasterVolume" min="0" max="1" step="0.05" value="0.8" /></label>
+    </div>
+    <div id="tplSoundEventRows"></div>
+    <div class="row" style="margin-top:10px">
+      <button onclick="saveTemplate()">Save New Template</button>
+      <button onclick="updateSelectedTemplate()" id="updateTplBtn" class="secondary" disabled>Update Selected Template</button>
+      <button onclick="clearTemplateForm()" class="secondary">Clear Form</button>
+    </div>
+  </div>
+
+  <div class="panel" id="auctionControlPanel" style="display:none">
+    <h2 id="activeAuctionName"></h2>
+    <div id="presenceLine" style="color:#8b949e;font-size:0.9rem">Online: —</div>
+    <div class="row">
+      <button onclick="callAction('start')">Start</button>
+      <button onclick="callAction('pause')" class="secondary">Pause</button>
+      <button onclick="callAction('resume')" class="secondary">Resume</button>
+      <button onclick="checkChecklist()" class="secondary">Pre-Auction Checklist</button>
+    </div>
+    <div class="row">
+      <button onclick="emergencyPause()" class="danger">🚨 Emergency Pause</button>
+      <button onclick="undoLastAction()" id="undoBtn" class="danger" disabled>Undo Last Transaction</button>
+      <button onclick="undoLastBid()" id="undoBidBtn" class="danger" disabled>Undo Last Bid</button>
+    </div>
+    <div id="checklistResult"></div>
+
+    <div class="row" style="margin-top:16px">
+      <div class="col">
+        <h3>Nominate Player</h3>
+        <select id="nominatePlayerSelect"></select>
+        <button onclick="nominatePlayer()">Nominate → LIVE</button>
+      </div>
+      <div class="col">
+        <h3>Current Live Player</h3>
+        <div id="currentBid">—</div>
+        <div id="timer">--:--</div>
+        <div id="highestBidder"></div>
+        <div class="row">
+          <button onclick="sellPlayer()">SOLD</button>
+          <button onclick="markUnsold()" class="danger">UNSOLD</button>
+        </div>
+      </div>
+    </div>
+
+    <h3 id="teamsAnchor">Teams</h3>
+    <div class="tableWrap"><table id="teamsTable"><thead><tr><th>Team</th><th>Purse</th><th>Spent</th><th>Remaining</th><th>Squad</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
+
+    <h4>Add Team</h4>
+    <div class="row">
+      <input id="newTeamName" placeholder="Team name" />
+      <input id="newTeamPurse" type="number" placeholder="Purse" />
+      <input id="newTeamSquadLimit" type="number" placeholder="Squad limit" />
+      <input id="newTeamOverseasLimit" type="number" placeholder="Overseas limit" value="0" />
+      <button onclick="addTeam()">Add Team</button>
+    </div>
+
+    <h4>Assign Team Owner</h4>
+    <div class="row">
+      <select id="assignOwnerTeamSelect"></select>
+      <input id="assignOwnerUsername" placeholder="Team owner's username (must already have an account)" style="width:280px" />
+      <button onclick="assignTeamOwner()" class="secondary">Assign</button>
+    </div>
+
+    <h4>Assign Host</h4>
+    <div class="row">
+      <input id="assignHostUsername" placeholder="Host's username (must already have an account)" style="width:280px" />
+      <button onclick="assignHost()" class="secondary">Assign as Host</button>
+    </div>
+    <div id="teamManagementResult" style="color:#8b949e;font-size:0.85rem"></div>
+
+    <h3 id="playersAnchor">Players</h3>
+    <input id="playerSearch" placeholder="Search players..." oninput="loadPlayers()" />
+    <div class="tableWrap"><table id="playersTable"><thead><tr><th>Name</th><th>Role</th><th>Base</th><th>Status</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
+
+    <h4>Add Player</h4>
+    <div class="row">
+      <input id="newPlayerName" placeholder="Player name" />
+      <input id="newPlayerRole" placeholder="Role (e.g. Batter)" />
+      <input id="newPlayerCountry" placeholder="Country" />
+      <input id="newPlayerCategory" placeholder="Category" />
+      <label><input type="checkbox" id="newPlayerOverseas" /> Overseas</label>
+      <input id="newPlayerBasePrice" type="number" placeholder="Base price" />
+      <button onclick="addPlayer()">Add Player</button>
+    </div>
+    <div id="playerManagementResult" style="color:#8b949e;font-size:0.85rem"></div>
+
+    <h3>Import Players / Teams (Excel or CSV)</h3>
+    <div class="row">
+      <div class="col">
+        <label>Players file (columns: name, role, country, category, isOverseas, basePrice)</label><br/>
+        <input type="file" id="playerFileInput" accept=".xlsx,.csv" />
+        <button onclick="importPlayersFile()" class="secondary">Import Players</button>
+      </div>
+      <div class="col">
+        <label>Teams file (columns: name, purse, squadLimit, overseasLimit)</label><br/>
+        <input type="file" id="teamFileInput" accept=".xlsx,.csv" />
+        <button onclick="importTeamsFile()" class="secondary">Import Teams</button>
+      </div>
+    </div>
+    <div id="importResult" style="color:#8b949e;font-size:0.85rem"></div>
+
+    <h3>Activity Log</h3>
+    <div id="log"></div>
+
+    <h3 id="chatAnchor">Chat / Announcements</h3>
+    <div id="chatMessages" style="max-height:180px;overflow-y:auto;border:1px solid #30363d;border-radius:6px;padding:8px;margin-bottom:8px;font-size:0.9rem"></div>
+    <div id="typingLine"></div>
+    <input id="chatInput" placeholder="Type a message or announcement..." style="width:70%" oninput="onChatTyping()" />
+    <button onclick="sendChat('GLOBAL')" class="secondary">Send</button>
+    <button onclick="sendChat('ANNOUNCEMENT')">Send as Announcement</button>
+  </div>
+
+  <div class="panel" id="exportPanel">
+    <h2>Export</h2>
+    <div class="row">
+      <button onclick="downloadExport('squads.csv','squads.csv')" class="secondary">Squads (CSV)</button>
+      <button onclick="downloadExport('purchases.csv','purchases.csv')" class="secondary">Purchases (CSV)</button>
+      <button onclick="downloadExport('unsold.csv','unsold.csv')" class="secondary">Unsold (CSV)</button>
+      <button onclick="downloadExport('bid-history.csv','bid-history.csv')" class="secondary">Bid History (CSV)</button>
+      <button onclick="downloadExport('full.xlsx','auction-summary.xlsx')">Full Summary (Excel)</button>
+    </div>
+    <h4>Import sample files</h4>
+    <div class="row">
+      <a href="samples/sample-players.csv" download style="color:#58a6ff">sample-players.csv</a>
+      <a href="samples/sample-teams.csv" download style="color:#58a6ff">sample-teams.csv</a>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Post-Auction Summary</h2>
+    <button onclick="loadPostAuctionSummary()" class="secondary">Load Summary</button>
+    <div id="finalSummary" style="margin-top:10px"></div>
+    <table id="finalTeamTable" style="margin-top:8px"><thead><tr><th>Team</th><th>Spent</th><th>Squad</th><th>Overseas</th></tr></thead><tbody></tbody></table>
+    <table id="finalCategoryTable" style="margin-top:8px"><thead><tr><th>Category</th><th>Sold</th><th>Total Spent</th><th>Avg Price</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="panel">
+    <h2>Highlights 🏆</h2>
+    <button onclick="loadHighlights()" class="secondary">Refresh Highlights</button>
+    <div id="highlightsBox" style="margin-top:10px"></div>
+  </div>
+
+  <div class="panel" id="analyticsPanel">
+    <h2>Analytics</h2>
+    <button onclick="loadAnalytics()" class="secondary">Refresh Analytics</button>
+    <div id="analyticsSummary" class="row" style="margin-top:8px"></div>
+    <table id="analyticsTeamsTable"><thead><tr><th>Team</th><th>Spent</th><th>Remaining</th><th>Squad</th><th>Overseas</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="panel" id="soundPanel">
+    <h2>Sound Settings (Owner)</h2>
+    <div class="row">
+      <label><input type="checkbox" id="masterEnabled" checked /> Master sound ON</label>
+      <label>Master volume <input type="range" id="masterVolume" min="0" max="1" step="0.05" value="0.8" /></label>
+    </div>
+    <div id="soundEventRows"></div>
+    <div class="row" style="margin-top:10px">
+      <button onclick="saveSoundSettings()">Save Sound Settings</button>
+      <button onclick="resetSoundSettings()" class="secondary">Reset to Default</button>
+    </div>
+    <h3>My Local Playback</h3>
+    <div class="row">
+      <label><input type="checkbox" id="localMute" /> Mute sounds on this device</label>
+      <label>My volume <input type="range" id="localVolume" min="0" max="1" step="0.05" value="1" /></label>
+    </div>
+  </div>
+</div>
+
+</div><!-- /.shell -->
+
+<script type="module">
+  import { VoiceChat } from "./voiceEngine.js";
+  window.__voiceCtor = VoiceChat; // handed to the classic <script> block below, which owns `socket`
+</script>
+<script>
+const API = `${window.location.origin}/api`; // works locally AND once deployed — no hardcoded host
+let token = null, socket = null, activeAuctionId = null;
+let soundCatalog = [];
+let currentSoundSettings = null;
+const SOUND_EVENT_LABELS = {
+  bid: "Bid", intenseBid: "Intense/High Bid", timerWarning: "Timer Warning", sold: "SOLD",
+  unsold: "UNSOLD", auctionStart: "Auction Start", pause: "Pause", resume: "Resume",
+  newPlayer: "New Player", outbid: "Outbid",
+};
+
+async function login() {
+  window.AuctionSounds?.unlock(); // user gesture — satisfies browser autoplay policy
+  const username = document.getElementById("loginUsername").value;
+  const password = document.getElementById("loginPassword").value;
+  const res = await fetch(`${API}/login`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({username,password}) });
+  const data = await res.json();
+  if (!res.ok) { document.getElementById("loginError").innerText = data.error; return; }
+  token = data.token;
+  localStorage.setItem("cricketAuction_token", token); // persist so index.html / a page refresh doesn't force re-login
+  await afterLogin();
+}
+
+// Shared by manual login AND automatic login when arriving here already
+// authenticated via index.html (the role-based landing page).
+async function afterLogin() {
+  document.getElementById("loginPanel").style.display = "none";
+  document.getElementById("hidden-panels").style.display = "block";
+  connectSocket();
+  await loadAuctions();
+  await loadSoundCatalog();
+  initLocalSoundControls();
+  loadTemplates();
+  initTemplateFormDefaults();
+
+  // If the person picked this auction from index.html's auction list,
+  // jump straight into it instead of making them click "Open" again.
+  const preselectedId = localStorage.getItem("cricketAuction_activeAuctionId");
+  const preselectedName = localStorage.getItem("cricketAuction_activeAuctionName");
+  if (preselectedId) {
+    selectAuction(preselectedId, encodeURIComponent(preselectedName || ""));
+  }
+}
+
+function logout() {
+  voiceChat?.leave();
+  localStorage.removeItem("cricketAuction_token");
+  localStorage.removeItem("cricketAuction_activeAuctionId");
+  localStorage.removeItem("cricketAuction_activeAuctionName");
+  localStorage.removeItem("cricketAuction_role");
+  window.location.href = "index.html";
+}
+
+function authHeaders() { return { "Content-Type":"application/json", "Authorization": `Bearer ${token}` }; }
+
+// Auto-login: if a token is already saved (from a previous session or
+// from picking this auction on index.html), skip the manual login form
+// entirely — this is what makes the role-based routing from index.html
+// feel seamless instead of asking the person to log in twice.
+const savedToken = localStorage.getItem("cricketAuction_token");
+if (savedToken) {
+  token = savedToken;
+  afterLogin();
+}
+
+let voiceChat = null;
+function toggleVoice() {
+  if (!activeAuctionId) return alert("Open an auction first.");
+  if (!voiceChat) voiceChat = new window.__voiceCtor(socket);
+  voiceChat.onChange = ({ active, muted, count }) => {
+    document.getElementById("voiceBar").classList.toggle("live", active);
+    document.getElementById("voiceJoinBtn").innerText = active ? "Leave call" : "🎙️ Join";
+    document.getElementById("voiceStatus").innerText = active ? `Voice: live · ${count} other${count === 1 ? "" : "s"}` : "Voice: off";
+    document.getElementById("voiceMuteBtn").style.display = active ? "inline-block" : "none";
+    document.getElementById("voiceMuteBtn").innerText = muted ? "Unmute" : "Mute";
+  };
+  if (voiceChat.active) voiceChat.leave();
+  else voiceChat.join(activeAuctionId).catch((e) => alert("Couldn't access microphone: " + e.message));
+}
+function toggleVoiceMute() { voiceChat?.toggleMute(); }
+
+function connectSocket() {
+  socket = io(window.location.origin, { auth: { token } });
+
+  socket.on("bid:update", (data) => {
+    document.getElementById("currentBid").innerText = `₹${data.currentBid}`;
+    document.getElementById("highestBidder").innerText = `Highest: ${data.currentBidderTeamId}`;
+    startTimerDisplay(data.timerEndsAt);
+    logLine(`Bid: ₹${data.currentBid} by team ${data.currentBidderTeamId}`);
+    window.AuctionSounds?.playEvent("bid", currentSoundSettings);
+    syncState(); // also refreshes the Undo Last Bid button's enabled state
+  });
+  socket.on("player:live", (data) => {
+    startTimerDisplay(data.timerEndsAt);
+    logLine(`Player nominated, timer started.`);
+    loadPlayers();
+    window.AuctionSounds?.playEvent("newPlayer", currentSoundSettings);
+  });
+  socket.on("player:sold", (data) => {
+    logLine(`SOLD for ₹${data.price} to ${data.teamId}`);
+    loadPlayers(); loadTeams();
+    window.AuctionSounds?.playEvent("sold", currentSoundSettings);
+  });
+  socket.on("player:unsold", () => {
+    logLine(`Marked UNSOLD.`);
+    loadPlayers();
+    window.AuctionSounds?.playEvent("unsold", currentSoundSettings);
+  });
+  socket.on("auction:started", () => {
+    logLine("Auction STARTED.");
+    window.AuctionSounds?.playEvent("auctionStart", currentSoundSettings);
+  });
+  socket.on("auction:paused", () => {
+    logLine("Auction PAUSED.");
+    window.AuctionSounds?.playEvent("pause", currentSoundSettings);
+  });
+  socket.on("auction:resumed", (data) => {
+    logLine("Auction RESUMED.");
+    startTimerDisplay(data.livePlayerTimerEndsAt);
+    window.AuctionSounds?.playEvent("resume", currentSoundSettings);
+  });
+  socket.on("chat:message", (msg) => addChatMessage(msg));
+  socket.on("chat:rejected", (data) => alert(data.reason));
+  socket.on("presence:update", () => refreshPresence());
+  socket.on("chat:typing:update", (data) => updateTypingLine(data.users));
+  socket.on("notification:new", (n) => { prependNotification(n); bumpNotifBadge(); });
+  socket.on("soundSettings:updated", (settings) => { currentSoundSettings = settings; renderSoundSettingsForm(); });
+  socket.on("auction:emergencyPaused", () => {
+    logLine("🚨 EMERGENCY PAUSE triggered.");
+    window.AuctionSounds?.playEvent("pause", currentSoundSettings);
+  });
+  socket.on("action:undone", (result) => {
+    logLine(`Undo applied: ${result.type}`);
+    loadPlayers(); loadTeams(); syncState();
+  });
+}
+
+async function emergencyPause() {
+  if (!confirm("Trigger EMERGENCY PAUSE? This immediately stops all bidding.")) return;
+  await fetch(`${API}/auctions/${activeAuctionId}/emergency-pause`, { method:"POST", headers: authHeaders() });
+  logLine("Called emergency-pause.");
+}
+
+async function undoLastAction() {
+  if (!confirm("Undo the most recent SOLD/UNSOLD action? This will restore purse, squad, and player state.")) return;
+  const requestId = crypto.randomUUID();
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/undo`, { method:"POST", headers: authHeaders(), body: JSON.stringify({ requestId }) });
+  const result = await res.json();
+  if (!result.accepted) alert(result.reason || "Nothing to undo.");
+}
+
+async function undoLastBid() {
+  if (!confirm("Undo the last accepted bid on the current player? This restores the bid to its previous state.")) return;
+  const requestId = crypto.randomUUID();
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/undo-bid`, { method:"POST", headers: authHeaders(), body: JSON.stringify({ requestId }) });
+  const result = await res.json();
+  if (!result.accepted) alert(result.reason || "No bid to undo.");
+}
+
+// ---------------- Notifications ----------------
+let unreadCount = 0;
+async function loadNotifications() {
+  if (!activeAuctionId) return;
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/notifications`, { headers: authHeaders() });
+  const list = await res.json();
+  document.getElementById("notifList").innerHTML = list.map(n =>
+    `<div>${n.read ? "" : "🔵 "}<b>${escapeHtml(n.type)}</b>: ${escapeHtml(n.message)}</div>`
+  ).join("");
+  unreadCount = list.filter(n => !n.read).length;
+  updateNotifBadge();
+}
+function prependNotification(n) {
+  const div = document.getElementById("notifList");
+  const line = document.createElement("div");
+  line.innerHTML = `🔵 <b>${escapeHtml(n.type)}</b>: ${escapeHtml(n.message)}`;
+  div.prepend(line);
+}
+function bumpNotifBadge() { unreadCount++; updateNotifBadge(); }
+function updateNotifBadge() {
+  const badge = document.getElementById("notifBadge");
+  if (unreadCount > 0) { badge.style.display = "inline"; badge.innerText = unreadCount; }
+  else badge.style.display = "none";
+}
+async function markAllNotificationsRead() {
+  if (!activeAuctionId) return;
+  await fetch(`${API}/auctions/${activeAuctionId}/notifications/read-all`, { method:"POST", headers: authHeaders() });
+  unreadCount = 0; updateNotifBadge(); loadNotifications();
+}
+
+// ---------------- Sound settings ----------------
+async function loadSoundCatalog() {
+  const res = await fetch(`${API}/sound-catalog`);
+  soundCatalog = await res.json();
+}
+async function loadSoundSettings() {
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/sound-settings`);
+  currentSoundSettings = await res.json();
+  renderSoundSettingsForm();
+}
+function renderSoundSettingsForm() {
+  if (!currentSoundSettings) return;
+  document.getElementById("masterEnabled").checked = currentSoundSettings.masterEnabled;
+  document.getElementById("masterVolume").value = currentSoundSettings.masterVolume;
+  const rows = Object.keys(SOUND_EVENT_LABELS).map(key => {
+    const cfg = currentSoundSettings.events[key] || { enabled: true, soundId: "beep" };
+    const options = soundCatalog.map(s => `<option value="${s.id}" ${s.id === cfg.soundId ? "selected" : ""}>${s.label}</option>`).join("");
+    return `<div class="soundRow">
+      <label><input type="checkbox" data-event="${key}" class="eventEnabled" ${cfg.enabled ? "checked" : ""}/> ${SOUND_EVENT_LABELS[key]}</label>
+      <select data-event="${key}" class="eventSound">${options}</select>
+      <button type="button" class="secondary" onclick="previewSound('${key}')">Preview</button>
+    </div>`;
+  }).join("");
+  document.getElementById("soundEventRows").innerHTML = rows;
+}
+function previewSound(eventKey) {
+  const select = document.querySelector(`.eventSound[data-event="${eventKey}"]`);
+  window.AuctionSounds?.preview(select.value, parseFloat(document.getElementById("masterVolume").value));
+}
+async function saveSoundSettings() {
+  const events = {};
+  document.querySelectorAll(".eventEnabled").forEach(cb => {
+    const key = cb.dataset.event;
+    const select = document.querySelector(`.eventSound[data-event="${key}"]`);
+    events[key] = { enabled: cb.checked, soundId: select.value };
+  });
+  const body = {
+    masterEnabled: document.getElementById("masterEnabled").checked,
+    masterVolume: parseFloat(document.getElementById("masterVolume").value),
+    events,
+  };
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/sound-settings`, { method:"PUT", headers: authHeaders(), body: JSON.stringify(body) });
+  currentSoundSettings = await res.json();
+}
+async function resetSoundSettings() {
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/sound-settings/reset`, { method:"POST", headers: authHeaders() });
+  currentSoundSettings = await res.json();
+  renderSoundSettingsForm();
+}
+function initLocalSoundControls() {
+  const muteBox = document.getElementById("localMute");
+  const volSlider = document.getElementById("localVolume");
+  muteBox.checked = window.AuctionSounds?.getLocalMute() || false;
+  volSlider.value = window.AuctionSounds?.getLocalVolume() ?? 1;
+  muteBox.onchange = () => window.AuctionSounds?.setLocalMute(muteBox.checked);
+  volSlider.oninput = () => window.AuctionSounds?.setLocalVolume(parseFloat(volSlider.value));
+}
+
+// ---------------- Typing indicator ----------------
+let typingActive = false, typingStopTimer = null;
+function onChatTyping() {
+  const auctionId = activeAuctionId;
+  if (!auctionId) return;
+  if (!typingActive) {
+    typingActive = true;
+    socket.emit("chat:typing:start", { auctionId });
+  }
+  clearTimeout(typingStopTimer);
+  typingStopTimer = setTimeout(() => {
+    typingActive = false;
+    socket.emit("chat:typing:stop", { auctionId });
+  }, 2000); // local debounce — server also auto-clears after its own timeout as a safety net
+}
+function updateTypingLine(users) {
+  const line = document.getElementById("typingLine");
+  if (!users || users.length === 0) { line.innerText = ""; return; }
+  line.innerText = users.length === 1 ? `${users[0]} is typing...` : `${users.join(" and ")} are typing...`;
+}
+
+function refreshPresence() {
+  if (!activeAuctionId) return;
+  fetch(`${API}/auctions/${activeAuctionId}/presence`, { headers: authHeaders() })
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById("presenceLine").innerText = `Online: ${data.onlineCount} | Host online: ${data.hostOnline ? "yes" : "no"}`;
+    });
+}
+
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function addChatMessage(msg) {
+  const div = document.getElementById("chatMessages");
+  const line = document.createElement("div");
+  line.innerHTML = msg.type === "ANNOUNCEMENT"
+    ? `<b style="color:#f0883e">[Announcement]</b> ${escapeHtml(msg.message)}`
+    : `<b>${escapeHtml(msg.senderName || msg.senderUserId)}:</b> ${escapeHtml(msg.message)}`;
+  div.appendChild(line);
+  div.scrollTop = div.scrollHeight;
+}
+
+function sendChat(type) {
+  const input = document.getElementById("chatInput");
+  if (!input.value.trim()) return;
+  socket.emit("chat:send", { auctionId: activeAuctionId, type, message: input.value.trim() });
+  input.value = "";
+  clearTimeout(typingStopTimer);
+  typingActive = false;
+  socket.emit("chat:typing:stop", { auctionId: activeAuctionId });
+}
+
+function logLine(text) {
+  const log = document.getElementById("log");
+  const div = document.createElement("div");
+  div.innerText = `[${new Date().toLocaleTimeString()}] ${text}`;
+  log.prepend(div);
+}
+
+let timerInterval = null;
+let timerWarningPlayed = false;
+function startTimerDisplay(endsAtISO) {
+  clearInterval(timerInterval);
+  timerWarningPlayed = false;
+  if (!endsAtISO) { document.getElementById("timer").innerText = "--:--"; return; }
+  const endsAt = new Date(endsAtISO).getTime();
+  timerInterval = setInterval(() => {
+    const remaining = Math.max(0, Math.round((endsAt - Date.now()) / 1000));
+    document.getElementById("timer").innerText = `${remaining}s`;
+    if (remaining <= 5 && remaining > 0 && !timerWarningPlayed) {
+      timerWarningPlayed = true;
+      window.AuctionSounds?.playEvent("timerWarning", currentSoundSettings);
+    }
+    if (remaining <= 0) clearInterval(timerInterval);
+  }, 200);
+}
+
+async function loadAuctions() {
+  const res = await fetch(`${API}/auctions`, { headers: authHeaders() });
+  if (res.status === 401) { logout(); return; } // token expired/invalid — send back to index.html to re-login
+  const auctions = await res.json();
+  const div = document.getElementById("auctionList");
+  div.innerHTML = auctions.map(a => `<div>${escapeHtml(a.name)} [${escapeHtml(a.status)}] <button onclick="selectAuction('${a.id}','${encodeURIComponent(a.name)}')" class="secondary">Open</button></div>`).join("");
+}
+
+async function createAuction() {
+  const body = {
+    name: document.getElementById("newAuctionName").value,
+    baseBid: Number(document.getElementById("newBaseBid").value) || 0,
+    minIncrement: Number(document.getElementById("newIncrement").value) || 0,
+    timerSeconds: Number(document.getElementById("newTimer").value) || 15,
+    autoExtendSeconds: Number(document.getElementById("newAutoExtend").value) || 0,
+  };
+  const res = await fetch(`${API}/auctions`, { method:"POST", headers: authHeaders(), body: JSON.stringify(body) });
+  const auction = await res.json();
+
+  // Phase 17: if a template was loaded, apply its sound settings to the
+  // freshly created auction. Team defaults are shown as a note (no
+  // Add-Team form exists yet in this UI — that's a known, separately
+  // flagged gap, not part of Templates scope).
+  if (loadedTemplate && auction.id) {
+    await fetch(`${API}/auctions/${auction.id}/sound-settings`, {
+      method: "PUT", headers: authHeaders(), body: JSON.stringify(loadedTemplate.config.soundSettings),
+    });
+  }
+  loadedTemplate = null;
+  document.getElementById("loadedTemplateNote").innerText = "";
+  loadAuctions();
+}
+
+// ---------------- Phase 17: Templates ----------------
+let templates = [];
+let loadedTemplate = null;   // template applied to the Create Auction form (sound settings applied post-creation)
+let editingTemplateId = null; // set when editing an existing template
+
+async function loadTemplates() {
+  const res = await fetch(`${API}/templates`, { headers: authHeaders() });
+  templates = await res.json();
+  document.getElementById("templateList").innerHTML = templates.map(t => `
+    <div class="row" style="align-items:center">
+      <span style="flex:1">${escapeHtml(t.name)} <span style="color:#8b949e">(base ₹${t.config.baseBid}, incr ₹${t.config.minIncrement}, ${t.config.timerSeconds}s)</span></span>
+      <button class="secondary" onclick="loadTemplateIntoForm('${t.id}')">Load</button>
+      <button class="secondary" onclick="editTemplate('${t.id}')">Edit</button>
+      <button class="danger" onclick="deleteTemplateConfirm('${t.id}')">Delete</button>
+    </div>`).join("") || "<div style='color:#8b949e'>No templates saved yet.</div>";
+}
+
+function renderTemplateSoundRows(soundSettings) {
+  const rows = Object.keys(SOUND_EVENT_LABELS).map(key => {
+    const cfg = soundSettings.events[key] || { enabled: true, soundId: "beep" };
+    const options = soundCatalog.map(s => `<option value="${s.id}" ${s.id === cfg.soundId ? "selected" : ""}>${s.label}</option>`).join("");
+    return `<div class="soundRow">
+      <label><input type="checkbox" data-event="${key}" class="tplEventEnabled" ${cfg.enabled ? "checked" : ""}/> ${SOUND_EVENT_LABELS[key]}</label>
+      <select data-event="${key}" class="tplEventSound">${options}</select>
+    </div>`;
+  }).join("");
+  document.getElementById("tplSoundEventRows").innerHTML = rows;
+}
+
+function readTemplateFormConfig() {
+  const events = {};
+  document.querySelectorAll(".tplEventEnabled").forEach(cb => {
+    const key = cb.dataset.event;
+    const select = document.querySelector(`.tplEventSound[data-event="${key}"]`);
+    events[key] = { enabled: cb.checked, soundId: select.value };
+  });
+  return {
+    baseBid: Number(document.getElementById("tplBaseBid").value) || 0,
+    minIncrement: Number(document.getElementById("tplIncrement").value) || 0,
+    timerSeconds: Number(document.getElementById("tplTimer").value) || 15,
+    autoExtendSeconds: Number(document.getElementById("tplAutoExtend").value) || 0,
+    teamDefaults: {
+      purse: Number(document.getElementById("tplTeamPurse").value) || 0,
+      squadLimit: Number(document.getElementById("tplSquadLimit").value) || 0,
+      overseasLimit: Number(document.getElementById("tplOverseasLimit").value) || 0,
+    },
+    soundSettings: {
+      masterEnabled: document.getElementById("tplMasterEnabled").checked,
+      masterVolume: parseFloat(document.getElementById("tplMasterVolume").value),
+      events,
+    },
+  };
+}
+
+function fillTemplateForm(config, name) {
+  document.getElementById("templateName").value = name || "";
+  document.getElementById("tplBaseBid").value = config.baseBid;
+  document.getElementById("tplIncrement").value = config.minIncrement;
+  document.getElementById("tplTimer").value = config.timerSeconds;
+  document.getElementById("tplAutoExtend").value = config.autoExtendSeconds;
+  document.getElementById("tplTeamPurse").value = config.teamDefaults?.purse || "";
+  document.getElementById("tplSquadLimit").value = config.teamDefaults?.squadLimit || "";
+  document.getElementById("tplOverseasLimit").value = config.teamDefaults?.overseasLimit || "";
+  document.getElementById("tplMasterEnabled").checked = config.soundSettings.masterEnabled;
+  document.getElementById("tplMasterVolume").value = config.soundSettings.masterVolume;
+  renderTemplateSoundRows(config.soundSettings);
+}
+
+async function initTemplateFormDefaults() {
+  const res = await fetch(`${API}/sound-settings/default`);
+  const defaults = await res.json();
+  fillTemplateForm({ baseBid: 0, minIncrement: 0, timerSeconds: 15, autoExtendSeconds: 3, teamDefaults: {}, soundSettings: defaults });
+}
+
+async function saveTemplate() {
+  const name = document.getElementById("templateName").value;
+  if (!name.trim()) return alert("Enter a template name.");
+  const config = readTemplateFormConfig();
+  await fetch(`${API}/templates`, { method:"POST", headers: authHeaders(), body: JSON.stringify({ name, config }) });
+  clearTemplateForm();
+  loadTemplates();
+}
+
+async function editTemplate(id) {
+  const t = templates.find(x => x.id === id);
+  if (!t) return;
+  editingTemplateId = id;
+  document.getElementById("templateFormTitle").innerText = `Editing: ${t.name}`;
+  document.getElementById("updateTplBtn").disabled = false;
+  fillTemplateForm(t.config, t.name);
+}
+
+async function updateSelectedTemplate() {
+  if (!editingTemplateId) return;
+  const name = document.getElementById("templateName").value;
+  const config = readTemplateFormConfig();
+  await fetch(`${API}/templates/${editingTemplateId}`, { method:"PATCH", headers: authHeaders(), body: JSON.stringify({ name, config }) });
+  clearTemplateForm();
+  loadTemplates();
+}
+
+async function deleteTemplateConfirm(id) {
+  if (!confirm("Delete this template? This cannot be undone.")) return;
+  await fetch(`${API}/templates/${id}`, { method:"DELETE", headers: authHeaders() });
+  loadTemplates();
+}
+
+function clearTemplateForm() {
+  editingTemplateId = null;
+  document.getElementById("templateFormTitle").innerText = "New Template";
+  document.getElementById("updateTplBtn").disabled = true;
+  initTemplateFormDefaults();
+}
+
+function loadTemplateIntoForm(id) {
+  const t = templates.find(x => x.id === id);
+  if (!t) return;
+  loadedTemplate = t;
+  document.getElementById("newBaseBid").value = t.config.baseBid;
+  document.getElementById("newIncrement").value = t.config.minIncrement;
+  document.getElementById("newTimer").value = t.config.timerSeconds;
+  document.getElementById("newAutoExtend").value = t.config.autoExtendSeconds;
+  document.getElementById("loadedTemplateNote").innerText =
+    `Loaded "${t.name}" — team defaults (purse ₹${t.config.teamDefaults?.purse}, squad ${t.config.teamDefaults?.squadLimit}, overseas ${t.config.teamDefaults?.overseasLimit}) will apply when you add teams; sound settings will apply automatically on Create.`;
+}
+
+function selectAuction(id, encodedName) {
+  const name = decodeURIComponent(encodedName); // undoes the encodeURIComponent() used when building the onclick attribute — prevents a quote in the auction name from breaking out of the inline attribute string
+  activeAuctionId = id;
+  document.getElementById("activeAuctionName").innerText = name; // innerText, not innerHTML — safe regardless of content
+  document.getElementById("auctionControlPanel").style.display = "block";
+  socket.emit("auction:join", { auctionId: id });
+  loadTeams();
+  loadPlayers();
+  syncState();
+  refreshPresence();
+  loadNotifications();
+  loadSoundSettings();
+  // Consumed the "arrived here from index.html with a pre-picked
+  // auction" state — clear it so a later manual pick of a different
+  // auction isn't overridden by this on the next page load.
+  localStorage.removeItem("cricketAuction_activeAuctionId");
+  localStorage.removeItem("cricketAuction_activeAuctionName");
+  loadAnalytics();
+}
+
+async function syncState() {
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/state`, { headers: authHeaders() });
+  const state = await res.json();
+  if (state.livePlayer) {
+    document.getElementById("currentBid").innerText = `₹${state.livePlayer.current_bid ?? state.livePlayer.base_price}`;
+    document.getElementById("highestBidder").innerText = state.livePlayer.current_bidder_team_id ? `Highest: ${state.livePlayer.current_bidder_team_id}` : "No bids yet";
+    startTimerDisplay(state.livePlayer.timer_ends_at);
+  }
+  document.getElementById("undoBtn").disabled = !state.canUndo;
+  document.getElementById("undoBidBtn").disabled = !state.canUndoBid;
+}
+
+async function callAction(action) {
+  await fetch(`${API}/auctions/${activeAuctionId}/${action}`, { method:"POST", headers: authHeaders() });
+  logLine(`Called ${action}.`);
+}
+
+async function checkChecklist() {
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/checklist`, { headers: authHeaders() });
+  const data = await res.json();
+  document.getElementById("checklistResult").innerText = JSON.stringify(data.checks);
+}
+
+async function loadTeams() {
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/teams`);
+  const teams = await res.json();
+  document.querySelector("#teamsTable tbody").innerHTML = teams.map(t =>
+    `<tr><td>${escapeHtml(t.name)}</td><td>${t.purse}</td><td>${t.spent}</td><td>${t.purse - t.spent}</td><td>${t.squad_count}/${t.squad_limit}</td>
+     <td><button class="danger" onclick="deleteTeam('${t.id}')">Delete</button> <button class="secondary" onclick="removeTeamOwner('${t.id}')">Remove Owner</button></td></tr>`
+  ).join("");
+  // Also refresh the "assign owner" team dropdown so it always has current teams.
+  document.getElementById("assignOwnerTeamSelect").innerHTML = teams.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+}
+
+async function addTeam() {
+  const body = {
+    name: document.getElementById("newTeamName").value,
+    purse: Number(document.getElementById("newTeamPurse").value),
+    squadLimit: Number(document.getElementById("newTeamSquadLimit").value),
+    overseasLimit: Number(document.getElementById("newTeamOverseasLimit").value) || 0,
+  };
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/teams`, { method:"POST", headers: authHeaders(), body: JSON.stringify(body) });
+  const data = await res.json();
+  document.getElementById("teamManagementResult").innerText = res.ok ? `Team "${data.name}" added.` : `Error: ${data.error}`;
+  if (res.ok) { loadTeams(); document.getElementById("newTeamName").value = ""; }
+}
+
+async function deleteTeam(teamId) {
+  if (!confirm("Delete this team? Only possible if it has no players yet.")) return;
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/teams/${teamId}`, { method:"DELETE", headers: authHeaders() });
+  const data = await res.json();
+  if (!res.ok) alert(data.error || "Could not delete team.");
+  loadTeams();
+}
+
+async function assignTeamOwner() {
+  const teamId = document.getElementById("assignOwnerTeamSelect").value;
+  const username = document.getElementById("assignOwnerUsername").value;
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/teams/${teamId}/owner`, { method:"POST", headers: authHeaders(), body: JSON.stringify({ username }) });
+  const data = await res.json();
+  document.getElementById("teamManagementResult").innerText = res.ok ? `Assigned ${username} as owner.` : `Error: ${data.error}`;
+}
+
+async function removeTeamOwner(teamId) {
+  if (!confirm("Remove this team's owner?")) return;
+  await fetch(`${API}/auctions/${activeAuctionId}/teams/${teamId}/owner`, { method:"DELETE", headers: authHeaders() });
+  document.getElementById("teamManagementResult").innerText = "Team owner removed.";
+}
+
+async function assignHost() {
+  const username = document.getElementById("assignHostUsername").value;
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/host`, { method:"POST", headers: authHeaders(), body: JSON.stringify({ username }) });
+  const data = await res.json();
+  document.getElementById("teamManagementResult").innerText = res.ok ? `Assigned ${username} as host.` : `Error: ${data.error}`;
+}
+
+async function addPlayer() {
+  const body = {
+    name: document.getElementById("newPlayerName").value,
+    role: document.getElementById("newPlayerRole").value || null,
+    country: document.getElementById("newPlayerCountry").value || null,
+    category: document.getElementById("newPlayerCategory").value || null,
+    isOverseas: document.getElementById("newPlayerOverseas").checked,
+    basePrice: Number(document.getElementById("newPlayerBasePrice").value),
+  };
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/players`, { method:"POST", headers: authHeaders(), body: JSON.stringify(body) });
+  const data = await res.json();
+  document.getElementById("playerManagementResult").innerText = res.ok ? `Player "${data.name}" added.` : `Error: ${data.error}`;
+  if (res.ok) { loadPlayers(); document.getElementById("newPlayerName").value = ""; document.getElementById("newPlayerBasePrice").value = ""; }
+}
+
+async function deletePlayerRow(playerId) {
+  if (!confirm("Delete this player? Only possible if not already sold.")) return;
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/players/${playerId}`, { method:"DELETE", headers: authHeaders() });
+  const data = await res.json();
+  if (!res.ok) alert(data.error || "Could not delete player.");
+  loadPlayers();
+}
+
+async function loadPlayers() {
+  const search = document.getElementById("playerSearch")?.value || "";
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/players?search=${encodeURIComponent(search)}`);
+  const players = await res.json();
+  document.querySelector("#playersTable tbody").innerHTML = players.map(p =>
+    `<tr><td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.role||"")}</td><td>${p.base_price}</td><td class="status-${p.status}">${escapeHtml(p.status)}</td>
+     <td>${p.status === "SOLD" ? "" : `<button class="danger" onclick="deletePlayerRow('${p.id}')">Delete</button>`}</td></tr>`
+  ).join("");
+  document.getElementById("nominatePlayerSelect").innerHTML = players
+    .filter(p => p.status === "AVAILABLE")
+    .map(p => `<option value="${p.id}">${escapeHtml(p.name)} (₹${p.base_price})</option>`).join("");
+}
+
+async function nominatePlayer() {
+  const playerId = document.getElementById("nominatePlayerSelect").value;
+  await fetch(`${API}/auctions/${activeAuctionId}/nominate`, { method:"POST", headers: authHeaders(), body: JSON.stringify({ playerId }) });
+}
+
+async function sellPlayer() {
+  const playerId = document.getElementById("nominatePlayerSelect").value;
+  const requestId = crypto.randomUUID();
+  await fetch(`${API}/auctions/${activeAuctionId}/sell`, { method:"POST", headers: authHeaders(), body: JSON.stringify({ playerId, requestId }) });
+}
+
+async function markUnsold() {
+  const playerId = document.getElementById("nominatePlayerSelect").value;
+  const requestId = crypto.randomUUID();
+  await fetch(`${API}/auctions/${activeAuctionId}/unsold`, { method:"POST", headers: authHeaders(), body: JSON.stringify({ playerId, requestId }) });
+}
+
+// ---------------- Phase 16: Import (client-side parse via SheetJS, then POST JSON) ----------------
+function parseFileToRows(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: "array" });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        resolve(XLSX.utils.sheet_to_json(sheet, { defval: null }));
+      } catch (err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+async function importPlayersFile() {
+  const file = document.getElementById("playerFileInput").files[0];
+  if (!file) return alert("Choose a file first.");
+  const rows = await parseFileToRows(file);
+  const players = rows.map(r => ({
+    name: r.name, role: r.role, country: r.country, category: r.category,
+    isOverseas: !!(r.isOverseas === true || r.isOverseas === 1 || String(r.isOverseas).toLowerCase() === "true"),
+    basePrice: Number(r.basePrice),
+  }));
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/players/bulk`, { method:"POST", headers: authHeaders(), body: JSON.stringify({ players }) });
+  const data = await res.json();
+  document.getElementById("importResult").innerText = res.ok ? `Imported ${data.length} players.` : `Error: ${data.error}`;
+  if (res.ok) loadPlayers();
+}
+
+async function importTeamsFile() {
+  const file = document.getElementById("teamFileInput").files[0];
+  if (!file) return alert("Choose a file first.");
+  const rows = await parseFileToRows(file);
+  const teams = rows.map(r => ({
+    name: r.name, purse: Number(r.purse), squadLimit: Number(r.squadLimit), overseasLimit: Number(r.overseasLimit) || 0,
+  }));
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/teams/bulk`, { method:"POST", headers: authHeaders(), body: JSON.stringify({ teams }) });
+  const data = await res.json();
+  document.getElementById("importResult").innerText = res.ok ? `Imported ${data.length} teams.` : `Error: ${data.error}`;
+  if (res.ok) loadTeams();
+}
+
+// ---------------- Phase 16: Analytics ----------------
+async function loadAnalytics() {
+  if (!activeAuctionId) return;
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/analytics/live`);
+  const a = await res.json();
+  document.getElementById("analyticsSummary").innerHTML = `
+    <div class="col"><b>Total Bids:</b> ${a.totalBids}</div>
+    <div class="col"><b>Sold:</b> ${a.soldCount}</div>
+    <div class="col"><b>Unsold:</b> ${a.unsoldCount}</div>
+    <div class="col"><b>Total Spend:</b> ₹${a.totalSpending}</div>
+    <div class="col"><b>Highest Buy:</b> ₹${a.highestPurchase}</div>
+    <div class="col"><b>Avg Buy:</b> ₹${a.averagePurchase}</div>`;
+  document.querySelector("#analyticsTeamsTable tbody").innerHTML = a.teams.map(t =>
+    `<tr><td>${escapeHtml(t.name)}</td><td>${t.spent}</td><td>${t.remaining}</td><td>${t.squad_count}/${t.squad_limit}</td><td>${t.overseas_count}/${t.overseas_limit}</td></tr>`
+  ).join("");
+}
+
+// ---------------- Post-Auction Summary (final analytics, presentable) ----------------
+async function loadPostAuctionSummary() {
+  if (!activeAuctionId) return;
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/analytics/final`);
+  const f = await res.json();
+  document.getElementById("finalSummary").innerHTML = `
+    <div class="row">
+      <div class="col"><b>Total Bids:</b> ${f.bidCount}</div>
+      <div class="col"><b>Sold:</b> ${f.soldCount}</div>
+      <div class="col"><b>Unsold:</b> ${f.unsoldCount} (${f.unsoldPercentage}%)</div>
+      <div class="col"><b>Highest Purchase:</b> ₹${f.highestPurchase}</div>
+      <div class="col"><b>Lowest Purchase:</b> ₹${f.lowestPurchase}</div>
+      <div class="col"><b>Average Purchase:</b> ₹${f.averagePurchase}</div>
+      <div class="col"><b>Total Spending:</b> ₹${f.totalSpending}</div>
+    </div>`;
+  document.querySelector("#finalTeamTable tbody").innerHTML = f.teamComparison.map(t =>
+    `<tr><td>${escapeHtml(t.name)}</td><td>₹${t.spent}</td><td>${t.squad_count}/${t.squad_limit}</td><td>${t.overseas_count}/${t.overseas_limit}</td></tr>`
+  ).join("");
+  document.querySelector("#finalCategoryTable tbody").innerHTML = f.categoryStats.map(c =>
+    `<tr><td>${escapeHtml(c.category)}</td><td>${c.count}</td><td>₹${c.totalSpent}</td><td>₹${Math.round(c.avgPrice)}</td></tr>`
+  ).join("");
+}
+
+// ---------------- Highlights (derived client-side from the purchases list) ----------------
+async function loadHighlights() {
+  if (!activeAuctionId) return;
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/purchases`);
+  const purchases = await res.json();
+  const box = document.getElementById("highlightsBox");
+
+  if (!purchases.length) { box.innerHTML = "<div style='color:#8b949e'>No purchases yet.</div>"; return; }
+
+  const mostExpensive = purchases.reduce((max, p) => (p.price > (max?.price ?? -1) ? p : max), null);
+  const spendByTeam = {};
+  const countByTeam = {};
+  for (const p of purchases) {
+    spendByTeam[p.team] = (spendByTeam[p.team] || 0) + p.price;
+    countByTeam[p.team] = (countByTeam[p.team] || 0) + 1;
+  }
+  const biggestSpenderTeam = Object.entries(spendByTeam).sort((a, b) => b[1] - a[1])[0];
+  const mostActiveTeam = Object.entries(countByTeam).sort((a, b) => b[1] - a[1])[0];
+
+  box.innerHTML = `
+    <div>🏅 <b>Most Expensive Player:</b> ${escapeHtml(mostExpensive.player)} — ₹${mostExpensive.price} (${escapeHtml(mostExpensive.team)})</div>
+    <div>💰 <b>Biggest Spender:</b> ${escapeHtml(biggestSpenderTeam[0])} — ₹${biggestSpenderTeam[1]}</div>
+    <div>🛒 <b>Most Players Bought:</b> ${escapeHtml(mostActiveTeam[0])} — ${mostActiveTeam[1]} players</div>`;
+}
+
+// ---------------- Phase 16: Export (fetch as blob so the Authorization header is respected) ----------------
+async function downloadExport(endpointSuffix, filename) {
+  const res = await fetch(`${API}/auctions/${activeAuctionId}/export/${endpointSuffix}`, { headers: authHeaders() });
+  if (!res.ok) { alert("Export failed."); return; }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
