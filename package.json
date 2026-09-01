@@ -1,0 +1,23 @@
+{
+  "name": "auction-admin-backend",
+  "version": "1.0.0",
+  "description": "Admin backend for the existing SPL auction HTML — create auction config, upload players/sounds, generate logins. Does not touch the live bidding, which still runs on the existing Firestore setup.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "better-sqlite3": "^11.3.0",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "dotenv": "^16.4.5",
+    "multer": "^1.4.5-lts.1",
+    "xlsx": "^0.18.5",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "socket.io": "^4.7.5",
+    "express-rate-limit": "^7.4.0"
+  }
+}
